@@ -1,32 +1,38 @@
-# React + TypeScript + Vite
+# ZentraOS — School Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Modern, scalable, multi-tenant digital operating system for educational institutions across Uganda and East Africa (Nursery, Primary, Secondary, and Nursing/Health Training Institutions).
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Quick Start
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+### 1. Install Dependencies
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### 2. Run Local Development Server
+```bash
+npm run dev
+```
+
+### 3. Production Build
+```bash
+npm run build
+```
+
+---
+
+## 🔒 Security Notice: Bursar & Accounts Department
+Access to the **Bursar & Accounts Department** and financial records requires the authorized 8-digit security PIN:
+`88888888`
+
+---
+
+## 📦 Key Features
+- **Multi-Tenant Architecture**: Complete tenant isolation per institution.
+- **Offline-First Sync**: Powered by Dexie.js (IndexedDB) for low-bandwidth / offline roll call and marks recording.
+- **Bursar & Accounts Control**: Invoices, multi-channel receipts (MTN MoMo, Airtel Money, Bank Deposit Slips), general ledger, balance clearance slips.
+- **Exams & Automated Grading**: Standard UNEB O-Level / A-Level grading and printable result slips.
+- **Mobile-Optimized Attendance**: Touch-friendly status marking (Present, Absent, Late, Excused).
+- **Institution Onboarding**: Step-by-step wizard for configuring school types and classes.
