@@ -8,6 +8,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { DataTable } from '@/components/ui/DataTable'
+import { Avatar } from '@/components/ui/Avatar'
 import { useInstitutionStore } from '@/store/institution.store'
 import { DataService } from '@/lib/dataService'
 import { toast } from 'react-hot-toast'
@@ -101,11 +102,18 @@ export function StaffListPage() {
             key: 'name',
             header: 'Staff Name',
             render: (row) => (
-              <div>
-                <div className="font-semibold text-surface-900">
-                  {row.first_name} {row.last_name}
+              <div className="flex items-center gap-3">
+                <Avatar
+                  src={row.photo_url}
+                  name={`${row.first_name} ${row.last_name}`}
+                  size="sm"
+                />
+                <div>
+                  <div className="font-semibold text-surface-900">
+                    {row.first_name} {row.last_name}
+                  </div>
+                  <div className="text-xs text-surface-500">{row.position}</div>
                 </div>
-                <div className="text-xs text-surface-500">{row.position}</div>
               </div>
             ),
           },

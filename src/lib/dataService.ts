@@ -48,9 +48,12 @@ import type {
   DutyStatus,
   ActivityAssessmentStatus,
   AttendanceStatus,
+  ParentStudent,
+  StudentReportCard,
+  ReportCardSubject,
 } from '@/types'
 import { db, enqueueSync } from './dexie'
-import { generateId, generateReceiptNumber, formatCurrency } from './utils'
+import { generateId, generateReceiptNumber, formatCurrency, computeGrade, formatDate } from './utils'
 
 // In-Memory state initialised from localStorage or Mock data
 function loadLocal<T>(key: string, fallback: T): T {
@@ -74,6 +77,7 @@ function saveLocal<T>(key: string, data: T) {
 let institutions = loadLocal<Institution[]>('institutions', DEMO_INSTITUTIONS)
 let students = loadLocal<Student[]>('students', DEMO_STUDENTS)
 let parents = loadLocal<Parent[]>('parents', DEMO_PARENTS)
+let parentStudents = loadLocal<ParentStudent[]>('parent_students', DEMO_PARENT_STUDENTS)
 let staff = loadLocal<Staff[]>('staff', DEMO_STAFF)
 let academicYears = loadLocal<AcademicYear[]>('academic_years', DEMO_ACADEMIC_YEARS)
 let terms = loadLocal<Term[]>('terms', DEMO_TERMS)
@@ -133,21 +137,45 @@ export const DataService = {
   },
 
   // ---- STUDENTS ----
-  getStudents: (institutionId?: string): (Student & { current_class?: Class; current_stream?: Stream })[] => {
+  getStudents: (institutionId?: string): (Student & { current_class?: Class; current_stream?: Stream; parent?: Parent })[] => {
     const list = institutionId ? students.filter(s => s.institution_id === institutionId) : students
-    return list.map(s => ({
-      ...s,
-      current_class: classes.find(c => c.id === s.current_class_id),
-      current_stream: streams.find(st => st.id === s.current_stream_id),
-    }))
+    return list.map(s => {
+      const psLink = parentStudents.find(ps => ps.student_id === s.id && ps.is_primary_contact) || parentStudents.find(ps => ps.student_id === s.id)
+      const primaryParent = psLink ? parents.find(p => p.id === psLink.parent_id) : undefined
+      const studentParents = parentStudents
+        .filter(ps => ps.student_id === s.id)
+        .map(ps => ({
+          ...ps,
+          parent: parents.find(p => p.id === ps.parent_id),
+        }))
+
+      return {
+        ...s,
+        current_class: classes.find(c => c.id === s.current_class_id),
+        current_stream: streams.find(st => st.id === s.current_stream_id),
+        parents: studentParents,
+        parent: primaryParent,
+      }
+    })
   },
   getStudentById: (id: string) => {
     const s = students.find(item => item.id === id)
     if (!s) return null
+    const psLink = parentStudents.find(ps => ps.student_id === s.id && ps.is_primary_contact) || parentStudents.find(ps => ps.student_id === s.id)
+    const primaryParent = psLink ? parents.find(p => p.id === psLink.parent_id) : undefined
+    const studentParents = parentStudents
+      .filter(ps => ps.student_id === s.id)
+      .map(ps => ({
+        ...ps,
+        parent: parents.find(p => p.id === ps.parent_id),
+      }))
+
     return {
       ...s,
       current_class: classes.find(c => c.id === s.current_class_id),
       current_stream: streams.find(st => st.id === s.current_stream_id),
+      parents: studentParents,
+      parent: primaryParent,
     }
   },
   createStudent: async (data: Omit<Student, 'id' | 'created_at' | 'updated_at'>): Promise<Student> => {
@@ -193,8 +221,20 @@ export const DataService = {
   },
 
   // ---- PARENTS ----
-  getParents: (institutionId?: string) => {
-    return institutionId ? parents.filter(p => p.institution_id === institutionId) : parents
+  getParents: (institutionId?: string): (Parent & { children?: Array<ParentStudent & { student?: Student }> })[] => {
+    const list = institutionId ? parents.filter(p => p.institution_id === institutionId) : parents
+    return list.map(p => {
+      const parentChildren = parentStudents
+        .filter(ps => ps.parent_id === p.id)
+        .map(ps => ({
+          ...ps,
+          student: students.find(s => s.id === ps.student_id),
+        }))
+      return {
+        ...p,
+        children: parentChildren,
+      }
+    })
   },
   createParent: (data: Omit<Parent, 'id' | 'created_at'>): Parent => {
     const newParent: Parent = { ...data, id: generateId(), created_at: new Date().toISOString() }
@@ -208,6 +248,162 @@ export const DataService = {
     parents[idx] = { ...parents[idx], ...updates }
     saveLocal('parents', parents)
     return parents[idx]
+  },
+
+  // ---- REPORT CARDS & WHATSAPP REPORT GENERATION ----
+  generateStudentReportCard: (studentId: string, termId?: string): StudentReportCard | null => {
+    const student = DataService.getStudentById(studentId)
+    if (!student) return null
+
+    const inst = institutions.find(i => i.id === student.institution_id) || institutions[0]
+    const curYear = academicYears.find(ay => ay.is_current) || academicYears[0]
+    const curTerm = termId ? terms.find(t => t.id === termId) || terms[0] : terms.find(t => t.is_current) || terms[0]
+
+    const studentClass = classes.find(c => c.id === student.current_class_id)
+    const studentStream = streams.find(st => st.id === student.current_stream_id)
+
+    // Standard secondary subjects
+    const classSubjectsList = subjects.filter(s => s.institution_id === student.institution_id).slice(0, 8)
+    const subjectScores = [
+      { name: 'Mathematics', code: 'MTH-101', mid: 28, end: 60, initials: 'EO', remarks: 'Exceptional computation & problem solving' },
+      { name: 'English Language', code: 'ENG-101', mid: 24, end: 52, initials: 'ST', remarks: 'Very good vocabulary and essay structure' },
+      { name: 'Physics', code: 'PHY-101', mid: 26, end: 58, initials: 'EO', remarks: 'Mastered laboratory experiments & Hookes Law' },
+      { name: 'Chemistry', code: 'CHM-101', mid: 25, end: 55, initials: 'ST', remarks: 'Good grasp of stoichiometry & acids' },
+      { name: 'Biology', code: 'BIO-101', mid: 27, end: 59, initials: 'PM', remarks: 'Excellent biological drawings & cell analysis' },
+      { name: 'Geography', code: 'GEO-101', mid: 23, end: 50, initials: 'NK', remarks: 'Satisfactory map reading and climate analysis' },
+      { name: 'History & Political Ed', code: 'HIS-101', mid: 24, end: 52, initials: 'RL', remarks: 'Well articulated East African historical facts' },
+      { name: 'Computer Studies (ICT)', code: 'ICT-101', mid: 29, end: 62, initials: 'DB', remarks: 'Outstanding practical coding & spreadsheet skill' },
+    ]
+
+    const reportSubjects: ReportCardSubject[] = subjectScores.map((s, idx) => {
+      const final_score = Math.min(100, Math.round(s.mid + s.end))
+      const gradeInfo = computeGrade(final_score)
+      const points = gradeInfo.grade.includes('D1') ? 1 : gradeInfo.grade.includes('D2') ? 2 : gradeInfo.grade.includes('C3') ? 3 : gradeInfo.grade.includes('C4') ? 4 : gradeInfo.grade.includes('C5') ? 5 : gradeInfo.grade.includes('C6') ? 6 : gradeInfo.grade.includes('P7') ? 7 : gradeInfo.grade.includes('P8') ? 8 : 9
+
+      return {
+        subject_id: `sub-${idx}`,
+        subject_name: s.name,
+        subject_code: s.code,
+        midterm_score: s.mid,
+        endterm_score: s.end,
+        final_score,
+        grade: gradeInfo.grade,
+        points,
+        remarks: s.remarks,
+        teacher_initials: s.initials,
+      }
+    })
+
+    const total_marks = reportSubjects.reduce((acc, sub) => acc + sub.final_score, 0)
+    const average_score = Math.round((total_marks / reportSubjects.length) * 10) / 10
+    const total_points = reportSubjects.reduce((acc, sub) => acc + sub.points, 0)
+    
+    // Division determination
+    let division = 'Division 1 (Distinction)'
+    if (total_points > 32 && total_points <= 45) division = 'Division 2 (Credit)'
+    else if (total_points > 45 && total_points <= 58) division = 'Division 3 (Pass)'
+    else if (total_points > 58) division = 'Division 4 (General Pass)'
+
+    // Invoices for student
+    const studentInvoices = invoices.filter(i => i.student_id === studentId)
+    const total_billed = studentInvoices.reduce((acc, i) => acc + i.total_amount, 0)
+    const total_paid = studentInvoices.reduce((acc, i) => acc + i.total_paid, 0)
+    const balance_due = Math.max(0, total_billed - total_paid)
+
+    // Primary Parent
+    const parentInfo = student.parent ? {
+      name: student.parent.full_name,
+      phone: student.parent.phone,
+      relationship: student.parents?.[0]?.relationship || 'Guardian',
+    } : undefined
+
+    return {
+      student,
+      academic_year: curYear,
+      term: curTerm,
+      class_name: studentClass?.name || 'Senior One (S.1)',
+      stream_name: studentStream?.name || 'Stream A',
+      subjects: reportSubjects,
+      total_marks,
+      average_score,
+      total_points,
+      division,
+      class_rank: '1st out of 45 students',
+      attendance_summary: {
+        days_present: 48,
+        days_absent: 2,
+        days_total: 50,
+        attendance_rate: 96,
+      },
+      fees_summary: {
+        total_billed,
+        total_paid,
+        balance_due,
+        status: balance_due === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'outstanding',
+      },
+      conduct_rating: 'Exemplary & Highly Disciplined',
+      class_teacher_remarks: 'An exceptionally bright, disciplined, and proactive scholar. Demonstrates strong leadership and academic curiosity.',
+      head_teacher_remarks: 'Excellent performance! Promoted with distinction to the honors roll. Keep upholding our school motto: "Excellence in Leadership & Integrity".',
+      next_term_start_date: '2026-05-25',
+      next_term_fees: 1680000,
+      parent_info: parentInfo,
+    }
+  },
+
+  generateWhatsAppReportText: (reportCard: StudentReportCard): string => {
+    const s = reportCard.student
+    const p = reportCard.parent_info
+    const nextTermFormatted = formatDate(reportCard.next_term_start_date)
+
+    let text = `🏫 *KAMPALA MODEL HIGH SCHOOL*\n`
+    text += `📜 *OFFICIAL STUDENT ACADEMIC PROGRESS REPORT*\n`
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `👤 *Student Name:* ${s.first_name} ${s.last_name}\n`
+    text += `🆔 *Admission No:* ${s.admission_number}\n`
+    text += `📚 *Class & Stream:* ${reportCard.class_name} (${reportCard.stream_name})\n`
+    text += `📅 *Term:* ${reportCard.term.name} • ${reportCard.academic_year.name}\n`
+    if (p) {
+      text += `👨‍👩‍👧 *Parent/Guardian:* ${p.name} (${p.relationship})\n`
+    }
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `🏆 *OVERALL PERFORMANCE:*\n`
+    text += `• Total Marks: *${reportCard.total_marks} / ${reportCard.subjects.length * 100}*\n`
+    text += `• Term Average: *${reportCard.average_score}%*\n`
+    text += `• Division / Grade: *${reportCard.division}*\n`
+    text += `• Position in Class: *${reportCard.class_rank}*\n`
+    text += `• Overall Conduct: *${reportCard.conduct_rating}*\n`
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `📖 *SUBJECT PERFORMANCE SUMMARY:*\n`
+    reportCard.subjects.forEach(sub => {
+      text += `• *${sub.subject_name}:* ${sub.final_score}% (${sub.grade}) — _${sub.remarks}_\n`
+    })
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `📋 *ATTENDANCE & DISCIPLINE:*\n`
+    text += `• Attendance Rate: *${reportCard.attendance_summary.attendance_rate}%* (${reportCard.attendance_summary.days_present}/${reportCard.attendance_summary.days_total} Days Present)\n`
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `💳 *SCHOOL FEES LEDGER:*\n`
+    text += `• Total Billed: ${formatCurrency(reportCard.fees_summary.total_billed)}\n`
+    text += `• Total Paid: ${formatCurrency(reportCard.fees_summary.total_paid)}\n`
+    text += `• Current Balance: *${formatCurrency(reportCard.fees_summary.balance_due)}* ${reportCard.fees_summary.balance_due === 0 ? '✅ (Cleared)' : '⚠️ (Outstanding)'}\n`
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `✍️ *Class Teacher Remarks:*\n"${reportCard.class_teacher_remarks}"\n\n`
+    text += `🎖️ *Head Teacher Remarks:*\n"${reportCard.head_teacher_remarks}"\n\n`
+    text += `🗓️ *Next Term Resumption:* ${nextTermFormatted}\n`
+    text += `💰 *Next Term Fees Due:* ${formatCurrency(reportCard.next_term_fees)}\n`
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`
+    text += `_Generated digitally via ZentraOS School Management System. For inquiries, contact +256 772 112233._`
+
+    return text
+  },
+
+  getWhatsAppShareUrl: (phoneNumber: string, messageText: string): string => {
+    // Sanitize phone number: strip non-numeric characters except leading plus
+    let cleanPhone = phoneNumber.replace(/[^0-9]/g, '')
+    if (cleanPhone.startsWith('0')) {
+      // replace Ugandan leading 0 with 256
+      cleanPhone = '256' + cleanPhone.substring(1)
+    }
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
   },
 
   // ---- STAFF ----

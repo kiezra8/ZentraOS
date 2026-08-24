@@ -241,6 +241,7 @@ export interface Parent {
   full_name: string;
   phone: string;
   email?: string;
+  photo_url?: string;
   address?: string;
   occupation?: string;
   created_at: string;
@@ -360,6 +361,55 @@ export interface StudentMark {
   is_published: boolean;
   student?: Student;
   exam?: Exam;
+}
+
+export interface ReportCardSubject {
+  subject_id: string;
+  subject_name: string;
+  subject_code?: string;
+  midterm_score: number;
+  endterm_score: number;
+  final_score: number;
+  grade: string;
+  points: number;
+  remarks: string;
+  teacher_initials: string;
+}
+
+export interface StudentReportCard {
+  student: Student;
+  academic_year: AcademicYear;
+  term: Term;
+  class_name: string;
+  stream_name: string;
+  subjects: ReportCardSubject[];
+  total_marks: number;
+  average_score: number;
+  total_points: number;
+  division: string;
+  class_rank: string;
+  attendance_summary: {
+    days_present: number;
+    days_absent: number;
+    days_total: number;
+    attendance_rate: number;
+  };
+  fees_summary: {
+    total_billed: number;
+    total_paid: number;
+    balance_due: number;
+    status: PaymentStatus;
+  };
+  conduct_rating: string;
+  class_teacher_remarks: string;
+  head_teacher_remarks: string;
+  next_term_start_date: string;
+  next_term_fees: number;
+  parent_info?: {
+    name: string;
+    phone: string;
+    relationship: string;
+  };
 }
 
 // ---- Fees & Finance -------------------------

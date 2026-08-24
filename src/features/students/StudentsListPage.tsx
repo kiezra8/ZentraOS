@@ -9,6 +9,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Modal, ConfirmDialog } from '@/components/ui/Modal'
 import { DataTable } from '@/components/ui/DataTable'
+import { Avatar } from '@/components/ui/Avatar'
 import { useInstitutionStore } from '@/store/institution.store'
 import { DataService } from '@/lib/dataService'
 import { formatDate, getStudentStatusConfig, generateAdmissionNumber } from '@/lib/utils'
@@ -187,12 +188,19 @@ export function StudentsListPage() {
             key: 'full_name',
             header: 'Student Name',
             render: (row) => (
-              <div>
-                <div className="font-semibold text-surface-900">
-                  {row.first_name} {row.middle_name ? `${row.middle_name} ` : ''}{row.last_name}
-                </div>
-                <div className="text-[11px] text-surface-400">
-                  {row.gender.toUpperCase()} • DOB: {formatDate(row.date_of_birth)}
+              <div className="flex items-center gap-3">
+                <Avatar
+                  src={row.photo_url}
+                  name={`${row.first_name} ${row.last_name}`}
+                  size="sm"
+                />
+                <div>
+                  <div className="font-semibold text-surface-900">
+                    {row.first_name} {row.middle_name ? `${row.middle_name} ` : ''}{row.last_name}
+                  </div>
+                  <div className="text-[11px] text-surface-400">
+                    {row.gender.toUpperCase()} • DOB: {formatDate(row.date_of_birth)}
+                  </div>
                 </div>
               </div>
             ),

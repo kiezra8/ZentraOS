@@ -100,6 +100,18 @@ export function calculateGrade(
   return scale?.grade ?? 'F'
 }
 
+export function computeGrade(score: number): { grade: string; points: number } {
+  if (score >= 80) return { grade: 'D1 (Distinction 1)', points: 1 }
+  if (score >= 70) return { grade: 'D2 (Distinction 2)', points: 2 }
+  if (score >= 65) return { grade: 'C3 (Credit 3)', points: 3 }
+  if (score >= 60) return { grade: 'C4 (Credit 4)', points: 4 }
+  if (score >= 55) return { grade: 'C5 (Credit 5)', points: 5 }
+  if (score >= 50) return { grade: 'C6 (Credit 6)', points: 6 }
+  if (score >= 45) return { grade: 'P7 (Pass 7)', points: 7 }
+  if (score >= 40) return { grade: 'P8 (Pass 8)', points: 8 }
+  return { grade: 'F9 (Fail 9)', points: 9 }
+}
+
 export function calculatePercentage(obtained: number, max: number): number {
   if (max === 0) return 0
   return Math.round((obtained / max) * 100 * 10) / 10

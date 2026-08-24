@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import {
-  Users, Plus, Search, Phone, Mail, MapPin, UserPlus, Trash2, Edit2
+  Users, Plus, Search, Phone, Mail, MapPin, UserPlus, Trash2, Edit2,
+  MessageSquare, GraduationCap, Award, ExternalLink
 } from 'lucide-react'
 import { SectionHeader, Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { DataTable } from '@/components/ui/DataTable'
+import { Avatar } from '@/components/ui/Avatar'
 import { useInstitutionStore } from '@/store/institution.store'
 import { DataService } from '@/lib/dataService'
 import { toast } from 'react-hot-toast'
 import type { Parent } from '@/types'
 
 export function ParentsListPage() {
-  const { institution } = useInstitutionStore()
+  const { institution, currentTerm } = useInstitutionStore()
   const [parents, setParents] = useState(() => DataService.getParents(institution?.id))
   const [searchTerm, setSearchTerm] = useState('')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -46,14 +49,26 @@ export function ParentsListPage() {
     setFullName('')
     setPhone('')
     setEmail('')
+    setAddress('')
+    setOccupation('')
     toast.success('Parent / Guardian profile registered!')
+  }
+
+  function handleSendChildReportWhatsApp(parent: any, childStudent: any) {
+    const report = DataService.generateStudentReportCard(childStudent.id, currentTerm?.id)
+    if (!report) return toast.error('Could not generate report for student')
+    
+    const message = DataService.generateWhatsAppReportText(report)
+    const url = DataService.getWhatsAppShareUrl(parent.phone, message)
+    window.open(url, '_blank')
+    toast.success(`Opening WhatsApp for ${parent.full_name}...`)
   }
 
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Parents & Guardians"
-        subtitle="Manage family records, emergency telephone lines, and multi-child links"
+        title="Parents & Guardians Directory"
+        subtitle="Manage family records, emergency telephone lines, automatically linked children, and instant WhatsApp report dispatches"
         action={
           <Button
             variant="primary"
@@ -67,49 +82,93 @@ export function ParentsListPage() {
 
       <div className="card p-4">
         <Input
-          placeholder="Search parents by name, telephone, email..."
+          placeholder="Search parents by name, telephone, email, child..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           leftAdornment={<Search className="w-4 h-4" />}
         />
       </div>
 
-      <DataTable<Parent>
+      <DataTable<any>
         data={filteredParents}
         columns={[
           {
             key: 'full_name',
             header: 'Guardian Name',
             render: (row) => (
-              <div>
-                <div className="font-semibold text-surface-900">{row.full_name}</div>
-                <div className="text-xs text-surface-400">{row.occupation || 'Parent / Guardian'}</div>
+              <div className="flex items-center gap-3">
+                <Avatar
+                  src={row.photo_url}
+                  name={row.full_name}
+                  size="sm"
+                />
+                <div>
+                  <div className="font-bold text-surface-900 text-sm">{row.full_name}</div>
+                  <div className="text-xs text-surface-400">{row.occupation || 'Parent / Guardian'}</div>
+                </div>
               </div>
             ),
           },
           {
             key: 'phone',
-            header: 'Primary Telephone',
+            header: 'WhatsApp / Telephone',
             render: (row) => (
-              <div className="flex items-center gap-1.5 font-medium text-surface-800 text-xs">
-                <Phone className="w-3.5 h-3.5 text-primary-500" />
+              <div className="flex items-center gap-1.5 font-mono text-primary-700 text-xs font-semibold">
+                <Phone className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{row.phone}</span>
               </div>
             ),
           },
           {
-            key: 'email',
-            header: 'Email',
+            key: 'children',
+            header: 'Connected Children / Scholars',
             render: (row) => (
-              <span className="text-xs text-surface-600">{row.email || '—'}</span>
+              <div className="space-y-1">
+                {row.children && row.children.length > 0 ? (
+                  row.children.map((c: any) => (
+                    <div key={c.student_id} className="flex items-center gap-1.5 text-xs">
+                      <GraduationCap className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+                      <span className="font-semibold text-surface-900">{c.student?.first_name} {c.student?.last_name}</span>
+                      <span className="text-surface-400 text-[11px]">({c.student?.admission_number})</span>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-xs text-surface-400 italic">No connected students</span>
+                )}
+              </div>
             ),
           },
           {
             key: 'address',
-            header: 'Residence Address',
+            header: 'Residence',
             render: (row) => (
-              <span className="text-xs text-surface-600">{row.address || 'Uganda'}</span>
+              <span className="text-xs text-surface-600">{row.address || 'Kampala, Uganda'}</span>
             ),
+          },
+          {
+            key: 'actions',
+            header: 'Send Academic Report',
+            className: 'text-right',
+            render: (row) => {
+              const primaryChild = row.children?.[0]?.student
+              return (
+                <div className="flex items-center justify-end gap-1">
+                  {primaryChild ? (
+                    <Button
+                      size="sm"
+                      variant="success"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                      onClick={() => handleSendChildReportWhatsApp(row, primaryChild)}
+                    >
+                      WhatsApp Report
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-surface-400 italic">—</span>
+                  )}
+                </div>
+              )
+            },
           },
         ]}
       />
