@@ -31,6 +31,8 @@ export type StaffStatus = 'active' | 'inactive' | 'on_leave' | 'terminated';
 export type ExamType = 'cat' | 'midterm' | 'endterm' | 'coursework' | 'practical' | 'clinical';
 export type FeeType = 'tuition' | 'boarding' | 'meals' | 'transport' | 'uniform' | 'exam' | 'registration' | 'other';
 export type ConnectivityStatus = 'online' | 'offline' | 'syncing' | 'sync_complete' | 'sync_error';
+export type ActivityAssessmentStatus = 'completed' | 'in_progress' | 'missed' | 'deferred' | 'scheduled';
+export type DutyStatus = 'completed' | 'in_progress' | 'pending';
 
 // ---- Institution -------------------------
 
@@ -79,9 +81,9 @@ export interface AcademicStructureConfig {
 
 export interface ClassLevel {
   id: string;
-  name: string;          // e.g. "P1", "S1", "Baby Class", "Year 1"
+  name: string;
   order: number;
-  section?: string;      // e.g. "Primary", "O-Level", "A-Level"
+  section?: string;
 }
 
 // ---- User & Profile -------------------------
@@ -162,6 +164,7 @@ export interface Class {
   academic_year?: AcademicYear;
   department?: Department;
   streams?: Stream[];
+  studentCount?: number;
 }
 
 export interface Stream {
@@ -226,7 +229,6 @@ export interface Student {
   current_stream_id?: string;
   created_at: string;
   updated_at: string;
-  // joined
   current_class?: Class;
   current_stream?: Stream;
   parents?: ParentStudent[];
@@ -321,7 +323,7 @@ export interface GradingSystem {
 export interface GradingScale {
   id: string;
   grading_system_id: string;
-  grade: string;      // e.g. "A", "B", "D1"
+  grade: string;
   min_score: number;
   max_score: number;
   points?: number;
@@ -427,6 +429,49 @@ export interface Receipt {
   issued_by: string;
 }
 
+// ---- Live Class Activities & Duties ---------
+
+export interface ClassActivity {
+  id: string;
+  institution_id: string;
+  class_id: string;
+  class_name: string;
+  subject_or_activity: string;
+  teacher_name: string;
+  time_slot: string;
+  venue: string;
+  expected_outcome: string;
+  assessment_status: ActivityAssessmentStatus;
+  assessment_notes?: string;
+  assessed_by?: string;
+  assessed_at?: string;
+}
+
+export interface TeacherOnDuty {
+  id: string;
+  institution_id: string;
+  staff_id: string;
+  teacher_name: string;
+  role_title: string; // e.g. "Chief Teacher on Duty (TOD)"
+  duty_area: string; // e.g. "Main Gate & Morning Roll Call"
+  shift_time: string;
+  contact_phone: string;
+  is_active_now: boolean;
+  notes?: string;
+}
+
+export interface DailySpecialDuty {
+  id: string;
+  institution_id: string;
+  duty_title: string;
+  responsible_person: string;
+  department: string;
+  scheduled_time: string;
+  status: DutyStatus;
+  deliverables: string;
+  completion_notes?: string;
+}
+
 // ---- Audit Logs ----------------------------
 
 export interface AuditLog {
@@ -451,8 +496,8 @@ export interface SelectOption {
   label: string;
 }
 
-export interface TableColumn<T = Record<string, unknown>> {
-  key: keyof T | string;
+export interface TableColumn<T = any> {
+  key: string;
   header: string;
   render?: (row: T) => React.ReactNode;
   className?: string;
@@ -463,9 +508,4 @@ export interface PaginationState {
   page: number;
   pageSize: number;
   total: number;
-}
-
-export interface FilterState {
-  search: string;
-  [key: string]: string | string[] | boolean | undefined;
 }

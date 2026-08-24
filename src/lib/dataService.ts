@@ -18,6 +18,9 @@ import {
   DEMO_ATTENDANCE_SESSIONS,
   DEMO_ATTENDANCE_RECORDS,
   DEMO_AUDIT_LOGS,
+  DEMO_TEACHERS_ON_DUTY,
+  DEMO_DAILY_SPECIAL_DUTIES,
+  DEMO_CLASS_ACTIVITIES,
 } from './mockData'
 import type {
   Institution,
@@ -39,9 +42,15 @@ import type {
   Payment,
   Receipt,
   AuditLog,
+  TeacherOnDuty,
+  DailySpecialDuty,
+  ClassActivity,
+  DutyStatus,
+  ActivityAssessmentStatus,
+  AttendanceStatus,
 } from '@/types'
 import { db, enqueueSync } from './dexie'
-import { generateId, generateReceiptNumber } from './utils'
+import { generateId, generateReceiptNumber, formatCurrency } from './utils'
 
 // In-Memory state initialised from localStorage or Mock data
 function loadLocal<T>(key: string, fallback: T): T {
@@ -80,6 +89,25 @@ let payments = loadLocal<Payment[]>('payments', DEMO_PAYMENTS)
 let attendanceSessions = loadLocal<AttendanceSession[]>('attendance_sessions', DEMO_ATTENDANCE_SESSIONS)
 let attendanceRecords = loadLocal<AttendanceRecord[]>('attendance_records', DEMO_ATTENDANCE_RECORDS)
 let auditLogs = loadLocal<AuditLog[]>('audit_logs', DEMO_AUDIT_LOGS)
+let teachersOnDuty = loadLocal<TeacherOnDuty[]>('teachers_on_duty', DEMO_TEACHERS_ON_DUTY)
+let dailySpecialDuties = loadLocal<DailySpecialDuty[]>('daily_special_duties', DEMO_DAILY_SPECIAL_DUTIES)
+let classActivities = loadLocal<ClassActivity[]>('class_activities', DEMO_CLASS_ACTIVITIES)
+
+export interface ClassAttendanceSummary {
+  class_id: string
+  class_name: string
+  total_students: number
+  present_count: number
+  absent_count: number
+  late_count: number
+  excused_count: number
+  attendance_rate: number
+  students: Array<{
+    student: Student
+    status: AttendanceStatus
+    notes?: string
+  }>
+}
 
 export const DataService = {
   // ---- INSTITUTIONS ----
@@ -134,7 +162,6 @@ export const DataService = {
     await db.students.put(newStudent)
     await enqueueSync('students', 'insert', newStudent.id, newStudent as unknown as Record<string, unknown>)
     
-    // Add audit log
     DataService.addAuditLog({
       institution_id: data.institution_id,
       user_id: 'usr-admin',
@@ -272,7 +299,6 @@ export const DataService = {
     sessionData: Omit<AttendanceSession, 'id' | 'created_at'>,
     recordsData: { student_id: string; status: 'present' | 'absent' | 'late' | 'excused'; notes?: string }[]
   ): Promise<AttendanceSession> => {
-    // Check if session already exists for class & date
     let existingSession = attendanceSessions.find(
       s => s.class_id === sessionData.class_id && s.date === sessionData.date && s.period === sessionData.period
     )
@@ -289,7 +315,6 @@ export const DataService = {
       sessionId = existingSession.id
     }
 
-    // Replace/Insert records
     const newRecords: AttendanceRecord[] = recordsData.map(r => ({
       id: generateId(),
       session_id: sessionId!,
@@ -305,12 +330,98 @@ export const DataService = {
     ]
     saveLocal('attendance_records', attendanceRecords)
 
-    // Save offline Dexie
     await db.attendance_sessions.put(existingSession)
     await db.attendance_records.bulkPut(newRecords)
     await enqueueSync('attendance', 'insert', sessionId!, { session: existingSession, records: newRecords })
 
     return existingSession
+  },
+
+  // Per-Class Attendance Breakdown Calculation
+  getClassAttendanceBreakdown: (institutionId?: string): ClassAttendanceSummary[] => {
+    const instClasses = DataService.getClasses(institutionId)
+    const instStudents = DataService.getStudents(institutionId)
+
+    return instClasses.map(cls => {
+      const classStudents = instStudents.filter(s => s.current_class_id === cls.id)
+      const studentItems = classStudents.map(student => {
+        const record = attendanceRecords.find(r => r.student_id === student.id)
+        const status: AttendanceStatus = record ? record.status : 'present' // default present for demo
+        return {
+          student,
+          status,
+          notes: record?.notes,
+        }
+      })
+
+      const present_count = studentItems.filter(i => i.status === 'present').length
+      const late_count = studentItems.filter(i => i.status === 'late').length
+      const absent_count = studentItems.filter(i => i.status === 'absent').length
+      const excused_count = studentItems.filter(i => i.status === 'excused').length
+      const total = studentItems.length
+
+      const attendance_rate = total > 0 ? Math.round(((present_count + late_count) / total) * 100) : 100
+
+      return {
+        class_id: cls.id,
+        class_name: cls.name,
+        total_students: total,
+        present_count,
+        absent_count,
+        late_count,
+        excused_count,
+        attendance_rate,
+        students: studentItems,
+      }
+    })
+  },
+
+  // ---- TEACHERS ON DUTY (TOD) ----
+  getTeachersOnDuty: (institutionId?: string): TeacherOnDuty[] => {
+    return institutionId ? teachersOnDuty.filter(t => t.institution_id === institutionId) : teachersOnDuty
+  },
+
+  // ---- DAILY SPECIAL DUTIES ----
+  getDailySpecialDuties: (institutionId?: string): DailySpecialDuty[] => {
+    return institutionId ? dailySpecialDuties.filter(d => d.institution_id === institutionId) : dailySpecialDuties
+  },
+  updateDailySpecialDuty: (id: string, status: DutyStatus, completion_notes?: string): DailySpecialDuty | null => {
+    const idx = dailySpecialDuties.findIndex(d => d.id === id)
+    if (idx === -1) return null
+    dailySpecialDuties[idx] = {
+      ...dailySpecialDuties[idx],
+      status,
+      completion_notes: completion_notes ?? dailySpecialDuties[idx].completion_notes,
+    }
+    saveLocal('daily_special_duties', dailySpecialDuties)
+    return dailySpecialDuties[idx]
+  },
+
+  // ---- CLASS ACTIVITIES & ASSESSMENTS ----
+  getClassActivities: (institutionId?: string, classId?: string): ClassActivity[] => {
+    let list = institutionId ? classActivities.filter(a => a.institution_id === institutionId) : classActivities
+    if (classId) {
+      list = list.filter(a => a.class_id === classId)
+    }
+    return list
+  },
+  updateClassActivityAssessment: (
+    id: string,
+    assessment_status: ActivityAssessmentStatus,
+    assessment_notes?: string,
+    assessed_by: string = 'Dr. Joseph Muwanga'
+  ): ClassActivity | null => {
+    const idx = classActivities.findIndex(a => a.id === id)
+    if (idx === -1) return null
+    classActivities[idx] = {
+      ...classActivities[idx],
+      assessment_status,
+      assessment_notes: assessment_notes ?? classActivities[idx].assessment_notes,
+      assessed_by,
+      assessed_at: new Date().toISOString(),
+    }
+    saveLocal('class_activities', classActivities)
+    return classActivities[idx]
   },
 
   // ---- EXAMS & MARKS ----
@@ -430,7 +541,6 @@ export const DataService = {
     payments = [newPayment, ...payments]
     saveLocal('payments', payments)
 
-    // Update invoice total_paid & balance
     const invIdx = invoices.findIndex(i => i.id === data.invoice_id)
     if (invIdx !== -1) {
       const inv = invoices[invIdx]
@@ -441,7 +551,6 @@ export const DataService = {
       saveLocal('invoices', invoices)
     }
 
-    // Add Audit Log
     DataService.addAuditLog({
       institution_id: data.institution_id,
       user_id: 'usr-bursar',
@@ -492,6 +601,63 @@ export const DataService = {
       totalCollected,
       outstandingFees,
       collectionRate,
+    }
+  },
+
+  // ---- END-OF-DAY EXECUTIVE REPORT GENERATOR ----
+  generateExecutiveDailyReport: (institutionId?: string) => {
+    const stats = DataService.getStats(institutionId)
+    const breakdowns = DataService.getClassAttendanceBreakdown(institutionId)
+    const tods = DataService.getTeachersOnDuty(institutionId)
+    const duties = DataService.getDailySpecialDuties(institutionId)
+    const activities = DataService.getClassActivities(institutionId)
+
+    const totalPresent = breakdowns.reduce((acc, b) => acc + b.present_count, 0)
+    const totalLate = breakdowns.reduce((acc, b) => acc + b.late_count, 0)
+    const totalAbsent = breakdowns.reduce((acc, b) => acc + b.absent_count, 0)
+    const schoolAttendanceRate = stats.totalStudents > 0 ? Math.round(((totalPresent + totalLate) / stats.totalStudents) * 100) : 100
+
+    const completedActivities = activities.filter(a => a.assessment_status === 'completed')
+    const inProgressActivities = activities.filter(a => a.assessment_status === 'in_progress')
+    const missedActivities = activities.filter(a => a.assessment_status === 'missed' || a.assessment_status === 'deferred')
+    const scheduledActivities = activities.filter(a => a.assessment_status === 'scheduled')
+
+    const completedDuties = duties.filter(d => d.status === 'completed')
+    const pendingDuties = duties.filter(d => d.status === 'pending' || d.status === 'in_progress')
+
+    const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+    // Speech text for browser Web Speech synthesis
+    const speechText = `Good evening. Here is the daily executive operational briefing for ZentraOS on ${dateStr}. 
+The school recorded a total enrollment of ${stats.totalStudents} students with an overall attendance rate of ${schoolAttendanceRate} percent. ${totalPresent} students were present, ${totalLate} arrived late, and ${totalAbsent} were absent. 
+Regarding academic syllabus execution: out of ${activities.length} scheduled lessons and practicals today, ${completedActivities.length} were successfully conducted and assessed, ${inProgressActivities.length} are currently in progress, and ${missedActivities.length} require follow-up. 
+In institutional operations: ${completedDuties.length} out of ${duties.length} special duties have been completed, led by Lead Teacher on Duty Mr. Emmanuel Okello. 
+On the financial ledger: total collections stand at ${formatCurrency(stats.totalCollected)}, representing a ${stats.collectionRate} percent recovery rate. 
+The recommended priority plan for tomorrow is: first, conduct attendance follow-up for absent candidates in Senior Four; second, finalize the Library Lower Secondary textbooks accession; and third, conclude the Senior Three Physics spring constant lab evaluations. Have a pleasant evening.`
+
+    return {
+      date: dateStr,
+      schoolAttendanceRate,
+      totalStudents: stats.totalStudents,
+      totalPresent,
+      totalLate,
+      totalAbsent,
+      completedActivities,
+      inProgressActivities,
+      missedActivities,
+      scheduledActivities,
+      completedDuties,
+      pendingDuties,
+      tods,
+      stats,
+      speechText,
+      tomorrowPlan: [
+        'Follow up with parents of the absent students in Senior Four and Senior One.',
+        'Review Senior Three Physics laboratory force-extension graph submissions with Mr. Okello.',
+        'Supervise the delivery and cataloging of newly arrived Lower Secondary curriculum textbooks in the library.',
+        'Follow up on outstanding Term 1 fee installments for Senior Two students before mid-term exams.',
+        'Handover Teacher on Duty (TOD) logbook to the next duty shift teacher.',
+      ],
     }
   },
 }

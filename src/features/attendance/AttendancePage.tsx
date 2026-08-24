@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ClipboardCheck, Calendar, Clock, CheckCircle2, XCircle,
   AlertTriangle, HelpCircle, Save, Wifi, WifiOff, Users, ArrowRight,
@@ -17,9 +18,18 @@ import type { AttendanceStatus, Student } from '@/types'
 export function AttendancePage() {
   const { institution, currentTerm } = useInstitutionStore()
   const { status: connStatus } = useSyncStore()
+  const [searchParams] = useSearchParams()
 
   const [classes] = useState(() => DataService.getClasses(institution?.id))
-  const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || '')
+  const urlClassId = searchParams.get('classId')
+  const [selectedClassId, setSelectedClassId] = useState(urlClassId || classes[0]?.id || '')
+
+  useEffect(() => {
+    if (urlClassId && classes.some(c => c.id === urlClassId)) {
+      setSelectedClassId(urlClassId)
+    }
+  }, [urlClassId, classes])
+
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [selectedPeriod, setSelectedPeriod] = useState('Morning Roll Call')
   const [isSaving, setIsSaving] = useState(false)
