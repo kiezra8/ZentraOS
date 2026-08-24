@@ -2,41 +2,68 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CreditCard, TrendingUp, AlertCircle, Receipt, ArrowUpRight,
-  Plus, CheckCircle2, Download, Printer, Filter
+  Plus, CheckCircle2, Download, Printer, Filter, Lock
 } from 'lucide-react'
 import { StatCard, Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { BursaryPinGate } from '@/components/auth/BursaryPinModal'
 import { useAuthStore } from '@/store/auth.store'
 import { useInstitutionStore } from '@/store/institution.store'
 import { DataService } from '@/lib/dataService'
 import { formatCurrency, formatDate, getPaymentStatusConfig } from '@/lib/utils'
+import { toast } from 'react-hot-toast'
 
 export function BursarDashboard() {
   const { user } = useAuthStore()
   const { institution, currentTerm } = useInstitutionStore()
   const navigate = useNavigate()
 
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return sessionStorage.getItem('zentraos_bursary_unlocked') === 'true'
+  })
+
   const stats = DataService.getStats(institution?.id)
   const invoices = DataService.getInvoices(institution?.id)
   const payments = DataService.getPayments(institution?.id)
 
+  function handleLock() {
+    sessionStorage.removeItem('zentraos_bursary_unlocked')
+    setIsUnlocked(false)
+    toast('Bursar & Accounts Department Locked')
+  }
+
   return (
     <div className="space-y-6">
+      {/* PIN Security Gate */}
+      <BursaryPinGate
+        isOpen={!isUnlocked}
+        onUnlock={() => setIsUnlocked(true)}
+      />
+
       {/* Top Banner */}
       <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2">
             <Receipt className="w-3.5 h-3.5" />
-            <span>Bursary & Accounts Desk • {currentTerm?.name}</span>
+            <span>Bursar & Accounts Department • {currentTerm?.name}</span>
           </div>
-          <h1 className="text-2xl font-bold">Accounts Management</h1>
+          <h1 className="text-2xl font-bold">Bursar & Accounts Control</h1>
           <p className="text-emerald-200 text-xs mt-1">
             Total collections for current term: {formatCurrency(stats.totalCollected)} ({stats.collectionRate}% target achieved).
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-white border-white/30 hover:bg-white/10"
+            leftIcon={<Lock className="w-3.5 h-3.5" />}
+            onClick={handleLock}
+          >
+            Lock Department
+          </Button>
           <Button
             variant="success"
             leftIcon={<Plus className="w-4 h-4" />}

@@ -1,22 +1,29 @@
 import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { TableColumn } from '@/types'
 
-interface DataTableProps<T extends Record<string, unknown>> {
+export interface TableColumn<T = any> {
+  key: string
+  header: string
+  render?: (row: T) => React.ReactNode
+  className?: string
+  sortable?: boolean
+}
+
+interface DataTableProps<T> {
   data: T[]
   columns: TableColumn<T>[]
-  keyField?: keyof T
+  keyField?: keyof T | string
   isLoading?: boolean
   emptyMessage?: string
   onRowClick?: (row: T) => void
   pageSize?: number
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   data,
   columns,
-  keyField = 'id' as keyof T,
+  keyField = 'id',
   isLoading,
   emptyMessage = 'No records found.',
   onRowClick,
@@ -28,7 +35,7 @@ export function DataTable<T extends Record<string, unknown>>({
 
   const sorted = useMemo(() => {
     if (!sortKey) return data
-    return [...data].sort((a, b) => {
+    return [...data].sort((a: any, b: any) => {
       const av = a[sortKey]
       const bv = b[sortKey]
       const cmp = String(av ?? '').localeCompare(String(bv ?? ''))
@@ -56,7 +63,7 @@ export function DataTable<T extends Record<string, unknown>>({
           <thead>
             <tr>
               {columns.map(col => (
-                <th key={String(col.key)}>{col.header}</th>
+                <th key={col.key}>{col.header}</th>
               ))}
             </tr>
           </thead>
@@ -64,7 +71,7 @@ export function DataTable<T extends Record<string, unknown>>({
             {Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>
                 {columns.map((col) => (
-                  <td key={String(col.key)}>
+                  <td key={col.key}>
                     <div className="h-4 bg-surface-200 rounded animate-pulse w-3/4" />
                   </td>
                 ))}
@@ -81,7 +88,7 @@ export function DataTable<T extends Record<string, unknown>>({
       <div className="table-container bg-white">
         <table className="table">
           <thead>
-            <tr>{columns.map(col => <th key={String(col.key)}>{col.header}</th>)}</tr>
+            <tr>{columns.map(col => <th key={col.key}>{col.header}</th>)}</tr>
           </thead>
           <tbody>
             <tr>
@@ -103,13 +110,13 @@ export function DataTable<T extends Record<string, unknown>>({
             <tr>
               {columns.map(col => (
                 <th
-                  key={String(col.key)}
+                  key={col.key}
                   className={cn(col.className, col.sortable && 'cursor-pointer select-none hover:text-surface-900')}
-                  onClick={col.sortable ? () => handleSort(String(col.key)) : undefined}
+                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
                 >
                   <span className="inline-flex items-center gap-1">
                     {col.header}
-                    {col.sortable && sortKey === String(col.key) && (
+                    {col.sortable && sortKey === col.key && (
                       <span className="text-primary-500">{sortDir === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </span>
@@ -118,17 +125,17 @@ export function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {paginated.map(row => (
+            {paginated.map((row: any, idx) => (
               <tr
-                key={String(row[keyField])}
+                key={row[keyField] ?? idx}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={onRowClick ? 'cursor-pointer' : ''}
               >
                 {columns.map(col => (
-                  <td key={String(col.key)} className={col.className}>
+                  <td key={col.key} className={col.className}>
                     {col.render
                       ? col.render(row)
-                      : String(row[col.key as keyof T] ?? '—')}
+                      : String(row[col.key] ?? '—')}
                   </td>
                 ))}
               </tr>

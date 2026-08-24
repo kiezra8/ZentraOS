@@ -49,9 +49,9 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: 'Finance',
+    label: 'Finance & Accounts',
     items: [
-      { label: 'Fees & Payments', to: '/fees', icon: CreditCard, permission: 'fees.view' },
+      { label: 'Bursar & Accounts', to: '/fees', icon: CreditCard, permission: 'fees.view' },
     ],
   },
   {

@@ -15,7 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/academic-years': 'Academic Calendar',
   '/attendance': 'Attendance Register',
   '/exams': 'Examinations & Marks',
-  '/fees': 'Fees & Financials',
+  '/fees': 'Bursar & Accounts Department',
   '/reports': 'Institutional Reports',
   '/announcements': 'School Announcements',
   '/audit': 'System Audit Trail',

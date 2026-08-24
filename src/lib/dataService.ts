@@ -376,16 +376,25 @@ export const DataService = {
       payments: payments.filter(p => p.invoice_id === inv.id),
     }))
   },
-  createInvoice: (data: Omit<StudentInvoice, 'id' | 'created_at' | 'total_paid' | 'balance'> & { items: { description: string; amount: number }[] }): StudentInvoice => {
+  createInvoice: (data: Omit<StudentInvoice, 'id' | 'created_at' | 'total_paid' | 'balance' | 'total_amount' | 'items'> & { items: { description: string; amount: number; fee_structure_id?: string }[] }): StudentInvoice => {
     const total_amount = data.items.reduce((sum, item) => sum + item.amount, 0)
+    const invoiceId = generateId()
+    const invoiceItems = data.items.map(item => ({
+      id: generateId(),
+      invoice_id: invoiceId,
+      fee_structure_id: item.fee_structure_id,
+      description: item.description,
+      amount: item.amount,
+    }))
     const newInvoice: StudentInvoice = {
       ...data,
-      id: generateId(),
+      id: invoiceId,
       total_amount,
       total_paid: 0,
       balance: total_amount,
       status: 'outstanding',
       created_at: new Date().toISOString(),
+      items: invoiceItems,
     }
     invoices = [newInvoice, ...invoices]
     saveLocal('invoices', invoices)
